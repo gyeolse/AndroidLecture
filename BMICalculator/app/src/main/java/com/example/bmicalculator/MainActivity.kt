@@ -27,6 +27,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.State
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -42,25 +43,35 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.example.bmicalculator.ui.theme.BMICalculatorTheme
+import kotlin.math.pow
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
+            // gradle에 viewmodel 추가
+            val viewModel = viewModel<BmiViewModel>()
             val navController = rememberNavController()
 
+            // viewModel.bmiCalculate에서 값 변경이 일어나면서, 컴포즈 다시 실행, recompition 일어나면서, bmi 변경
+            val bmi = viewModel.bmi.value
             // startDestination : 어디로 이동할건지,
             NavHost(navController = navController, startDestination = "home") {
                 composable(route = "home") {
-                    HomeScreen(navController)
+                    HomeScreen() {
+                        height, weight ->
+                            viewModel.bmiCalculate(height, weight)
+                            navController.navigate("result")
+                    }
                 }
                 composable(route = "result") {
-                    ResultScreen(navController, bmi = 35.0)
+                    ResultScreen(navController, bmi = bmi)
                 }
             }
         }
@@ -70,7 +81,10 @@ class MainActivity : ComponentActivity() {
 @SuppressLint("UnusedMaterial3ScaffoldPaddingParameter")
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun HomeScreen(navController: NavController) {
+fun HomeScreen(
+//    navController: NavController,
+    onResultClicked: (Double, Double) -> Unit,
+) {
     // 화면 전환시 날라가지 않도록 -> rememberSaveable
     val (height, setHeight) = rememberSaveable {
         mutableStateOf("")
@@ -105,7 +119,11 @@ fun HomeScreen(navController: NavController) {
             Spacer(modifier = Modifier.height(8.dp))
             Button(
                 onClick = {
-                    navController.navigate("result")
+                    // 계산을 먼저 할 수 있도록 함.
+                    if (height.isNotEmpty() && weight.isNotEmpty()) {
+                        onResultClicked(height.toDouble(), weight.toDouble())
+                    }
+//                    navController.navigate("result")
                 },
                 modifier = Modifier.align(Alignment.End) // 오른쪽 끝으로 이동시킴
             ) {
@@ -119,6 +137,19 @@ fun HomeScreen(navController: NavController) {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ResultScreen(navController: NavController, bmi: Double) {
+    val text = when {
+        bmi >= 35 -> "고도 비만"
+        bmi >= 30 -> "2단계 비만"
+        bmi >= 25 -> "1단계 비만"
+        bmi >= 23 -> "과체중"
+        bmi >= 18.5 -> "정상"
+        else -> "저체중"
+    }
+    val imageRes = when {
+        bmi >= 23 -> R.drawable.baseline_sentiment_very_dissatisfied_24
+        bmi >= 18.5 -> R.drawable.baseline_sentiment_satisfied_24
+        else -> R.drawable.baseline_sentiment_dissatisfied_24
+    }
     Scaffold(
         topBar = {
             TopAppBar(title = { Text("비만도 계산기") }, navigationIcon = {
@@ -137,10 +168,10 @@ fun ResultScreen(navController: NavController, bmi: Double) {
             verticalArrangement = Arrangement.Center,
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Text("과체중", fontSize = 30.sp) // 글자는 sp이다.
+            Text(text, fontSize = 30.sp) // 글자는 sp이다.
             Spacer(modifier = Modifier.height(50.dp))
             Image(
-                painter = painterResource(id = R.drawable.baseline_sentiment_dissatisfied_24),
+                painter = painterResource(id = imageRes),
                 contentDescription = null,
                 modifier = Modifier.size(100.dp),
                 colorFilter = ColorFilter.tint(color = Color.Black)
@@ -151,6 +182,17 @@ fun ResultScreen(navController: NavController, bmi: Double) {
 
 class BmiViewModel : ViewModel() {
     // compose에 data를 표시하기 위해서 state 표시
+    private val _bmi = mutableStateOf(0.0)
+
+    // 외부로 노출시키기 위한 bmi 변수
+    // ViewModel 에서 State 값이 변화했을 때, 화면이 다시 그려진다는 것을 기억해두기
+    val bmi: State<Double> = _bmi
+
+    fun bmiCalculate(
+        height: Double, weight: Double
+    ) {
+        _bmi.value = weight / (height / 100.0).pow(2.0)
+    }
 }
 
 @Preview
